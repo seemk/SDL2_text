@@ -1,0 +1,16 @@
+[package]
+
+name = "SDL2_text"
+version = "0.0.1"
+
+authors = ["github.com/seemk"]
+
+[[lib]]
+
+name = "SDL2_text"
+path = "src/lib.rs"
+
+[dependencies.rust-sdl2_ttf]
+
+git = "https://github.com/andelf/rust-sdl2_ttf"
+
