@@ -11,7 +11,7 @@ fn main() {
     let font_path = match args.len() {
         0..1 => {
             let mut path = os::self_exe_path().unwrap();
-            path.push("bitstream.ttf");
+            path.push("assets/bitstream.ttf");
             path
         }
         _ => Path::new(args.get(1).as_slice())  
