@@ -1,7 +1,7 @@
 SDL2_text
 =========
 
-A convenience wrapper over "SDL2_ttf" for text drawing.
+A convenience wrapper over rust-sdl2_ttf for text drawing.
 
 Requirements
 ------------
