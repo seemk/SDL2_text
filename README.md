@@ -16,3 +16,7 @@ Building
 cargo build
 make examples
 ```
+
+Notes
+-----
+Differs from SDL2_ttf by rendering the font to a texture atlas, handles newlines.
