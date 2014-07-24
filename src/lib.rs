@@ -2,97 +2,95 @@
 #![crate_type  = "lib"]
 
 extern crate sdl2;
-extern crate sdl2_ttf;
+extern crate freetype;
 
 use sdl2::SdlResult;
 use sdl2::surface::Surface;
+use ft = freetype;
+use binpack::BinPack;
+
+mod binpack;
+
+// Some metrics in Freetype are expressed in 1/64th of pixels.
+static FT_SCALE_SHIFT: uint = 6;
 
 struct Glyph {
     u: u16,
     v: u16,
+    width: i32,
+    height: i32,
     advance: u8,
-    min_x: i8,
+    offset_x: i8,
+    offset_y: i8,
+}
+
+struct Vec2 {
+    pub x: i32,
+    pub y: i32
+}
+
+impl Vec2 {
+    
+    fn new(x: i32, y: i32) -> Vec2 {
+        Vec2 { x: x, y: y }
+    }
 }
 
 pub struct TextRenderer<'a, T> {
-    font: sdl2_ttf::Font,
+    font: ft::Face,
     sdl_renderer: &'a sdl2::render::Renderer<T>,
-    glyph_texture: sdl2::render::Texture,
+    pub glyph_texture: sdl2::render::Texture,
     glyphs: Vec<Glyph>,
     begin_index: uint,
-    max_glyph_width: i32,
-    max_glyph_height: i32,
+    line_height: i32
 }
 
-fn render_glyph_surfaces(font: &sdl2_ttf::Font,
-                         begin_code: u32,
-                         end_code: u32)
-                         -> SdlResult<Vec<Surface>> {
-   
-    let char_count = (end_code - begin_code) as uint;
-    let mut glyph_surfaces: Vec<Surface> = Vec::with_capacity(char_count); 
+fn render_char(slot: &ft::GlyphSlot) -> sdl2::surface::Surface {
+    
+    let bitmap = slot.bitmap();
+    let width = bitmap.width() as int;
+    let height = bitmap.rows() as int;
 
-    for i in range(begin_code, end_code) {
+    let surface = match sdl2::surface::Surface::new(
+            sdl2::surface::SWSurface, width, height,
+            32, 0x000000FFu32,
+            0x0000FF00u32, 0x00FF0000u32, 0xFF000000u32) {
+        Ok(s) => s,
+        Err(e) => fail!("Failed to create surface {}", e)
+    };
 
-        let character = std::char::from_u32(i).unwrap();
-        
-        let glyph_surface = try!(font.render_char_blended(character,
-                                                          sdl2::pixels::RGB(255, 255, 255)));
 
-        glyph_surfaces.push(glyph_surface);
-    }
+    surface.with_lock(|pixels: &mut [u8]| {
+        let buffer = bitmap.buffer();
+        for pixel_idx in range(0, buffer.len()) {
+            let grayscale_pixel = buffer[pixel_idx];
+            let surface_idx = pixel_idx * 4;
+            pixels[surface_idx] = 255u8;
+            pixels[surface_idx + 1] = 255u8;
+            pixels[surface_idx + 2] = 255u8;
+            pixels[surface_idx + 3] = grayscale_pixel;
+        }
+    });
 
-    Ok(glyph_surfaces)
+    surface
 }
 
-fn find_max_glyph_size(surfaces: &Vec<Surface>) -> (i32, i32) {
+fn make_glyph(slot: &ft::GlyphSlot) -> Glyph {
 
-    let mut max_glyph_width: i32 = 0;
-    let mut max_glyph_height: i32 = 0;
+    let width = slot.bitmap().width();
+    let height = slot.bitmap().rows();
+    let offset_x = slot.bitmap_left();
+    let offset_y = slot.bitmap_top();
 
-    for s in surfaces.iter() {
-        let surface_width = s.get_width() as i32;
-        let surface_height = s.get_height() as i32;
-        if surface_width > max_glyph_width { max_glyph_width = surface_width; }
-        if surface_height > max_glyph_height { max_glyph_height = surface_height; }
-    }
+    let advance = slot.advance();
 
-    (max_glyph_width, max_glyph_height)
-}
+    let advance_x = advance.x >> FT_SCALE_SHIFT;
 
-fn generate_glyphs(font: &sdl2_ttf::Font, begin_char: u32, end_char: u32, dim: i32,
-                   max_glyph_width: i32, max_glyph_height: i32) -> Vec<Glyph> {
+    Glyph { u: 0, v: 0, width: width, height: height,
+            advance: advance_x as u8,
+            offset_x: offset_x as i8,
+            offset_y: offset_y as i8 }
 
-    let char_count = (end_char - begin_char) as uint;
-    let mut glyphs: Vec<Glyph> = Vec::with_capacity(char_count); 
-    let mut index: i32 = 0;
-    for code in range(begin_char, end_char) {
-         
-        let character = std::char::from_u32(code).unwrap();
-        let cur_row = index / dim;
-        let cur_col = index % dim;
-        
-        let metrics = match font.metrics_of_char(character) {
-            Some(metrics) => metrics,
-            None => sdl2_ttf::GlyphMetrics { minx: 0, maxx: 0, miny: 0, maxy: 0,
-                                             advance: 0 }
-        };
-
-        // UV coordinates of the glyph
-        let u = cur_col * max_glyph_width; 
-        let v = cur_row * max_glyph_height;
-
-        let glyph_adv = metrics.advance as u8;
-
-        let glyph = Glyph { u: u as u16, v: v as u16, advance: glyph_adv,
-                            min_x: metrics.minx as i8 };
-
-        glyphs.push(glyph);
-        
-        index += 1;
-    }
-
-    glyphs
 }
 
 impl<'a, T> TextRenderer<'a, T> {
@@ -103,48 +101,53 @@ impl<'a, T> TextRenderer<'a, T> {
                      -> SdlResult<TextRenderer<'a, T>> {
 
 
-        sdl2_ttf::init();
+        let freetype = ft::Library::init().unwrap();
 
-        let font = try!(sdl2_ttf::Font::from_file(font_path, font_size));
+        let font = freetype.new_face(font_path.as_str().unwrap(), 0).unwrap();
+
+        font.set_pixel_sizes(font_size as u32, 0).unwrap();
+
         let char_begin = 0x20u32; // Space
         let char_end = 0xFFu32;
-        let glyph_surfaces = try!(render_glyph_surfaces(&font, char_begin, char_end));
 
-        let (max_glyph_width, max_glyph_height) = find_max_glyph_size(&glyph_surfaces);      
-
-        
-        let num_glyphs = glyph_surfaces.len() as i32;
-        let rows = (num_glyphs as f32).sqrt().ceil() as i32;
-
-        let texture_width = rows * max_glyph_width;
-        let texture_height = rows * max_glyph_height;
+        let texture_width = 512i;
+        let texture_height = 512i;
 
         let glyph_atlas_surface = try!(sdl2::surface::Surface::new(
-                sdl2::surface::SWSurface, texture_width as int,
-                texture_height as int, 32, 0xFF000000u32,
-                0x00FF0000u32, 0x0000FF00u32, 0x000000FFu32));
+                sdl2::surface::SWSurface, texture_width, texture_height, 32,
+                0xFF000000u32, 0x00FF0000u32, 0x0000FF00u32, 0x000000FFu32));
+
+        let mut packer = BinPack::new(texture_width as i32,
+                                                      texture_height as i32);
+
+        let mut glyphs: Vec<Glyph> = Vec::new();
+
+        for c in range(char_begin, char_end) {
+
+            font.load_char(c as u64, ft::face::Render).unwrap();
+
+            let slot = font.glyph();
+
+            let surface = render_char(slot);
+
+            // Create a new glyph with (u, v) = (0, 0)
+            let mut glyph = make_glyph(slot);
+
+            let dst_rect = match packer.insert(glyph.width, glyph.height) {
+                Some(rect) => rect,
+                None => fail!("Couldn't pack glyph for {}", c)
+            };
+
+            glyph.u = dst_rect.x as u16;
+            glyph.v = dst_rect.y as u16;
 
 
-        let glyphs = generate_glyphs(&font,
-                                     char_begin,
-                                     char_end,
-                                     rows,
-                                     max_glyph_width,
-                                     max_glyph_height);
+            let sdl_dst_rect = sdl2::rect::Rect::new(dst_rect.x, dst_rect.y,
+                                                      dst_rect.width, dst_rect.height);
 
-        { 
-            let mut iter = glyph_surfaces.iter().zip(glyphs.iter());
+            let _ = glyph_atlas_surface.blit(&surface, Some(sdl_dst_rect), None);
 
-            for (s, g) in iter {
-                let u = g.u as i32;
-                let v = g.v as i32;
-
-                let dst_rect = sdl2::rect::Rect::new(
-                    u, v, max_glyph_width, max_glyph_height);
-
-                let _ = glyph_atlas_surface.blit(s, Some(dst_rect), None);
-
-            }
+            glyphs.push(glyph);
         }
 
         let glyph_texture_atlas = try!(sdl_renderer.create_texture_from_surface(
@@ -152,32 +155,76 @@ impl<'a, T> TextRenderer<'a, T> {
 
         let _ = glyph_texture_atlas.set_blend_mode(sdl2::render::BlendBlend);
 
-        let atlas_rect = sdl2::rect::Rect::new(0, 0, texture_width, texture_height);
+        let atlas_rect = sdl2::rect::Rect::new(0, 0, texture_width as i32,
+                                               texture_height as i32);
         let _ = sdl_renderer.copy(&glyph_texture_atlas, None, Some(atlas_rect));
 
         Ok(TextRenderer { font: font, sdl_renderer: sdl_renderer,
                                   glyph_texture: glyph_texture_atlas,
                                   begin_index: char_begin as uint,
-                                  glyphs: glyphs, max_glyph_width: max_glyph_width,
-                                  max_glyph_height: max_glyph_height })
+                                  glyphs: glyphs, line_height: font_size as i32 })
     }
+
+    fn get_glyph(&self, character: char) -> Glyph {
+
+        let index = character as uint - self.begin_index;
+
+        let char_index = if index >= self.glyphs.len() {
+            0u
+        } else {
+            index
+        };
+
+        self.glyphs[char_index]
+    }
+
 
     fn blit_glyph(&self, glyph: &Glyph, x: i32, y: i32) {
 
         let u = glyph.u as i32;
         let v = glyph.v as i32;
-        let min_x = glyph.min_x as i32;
+        let offset_x = glyph.offset_x as i32;
+        let offset_y = glyph.offset_y as i32;
 
 
-        let src_rect = sdl2::rect::Rect::new(u, v, self.max_glyph_width, self.max_glyph_height);
+        let src_rect = sdl2::rect::Rect::new(u, v, glyph.width, glyph.height);
 
-        let dst_x = x + min_x;
-        let dst_y = y;
+        let dst_x = x + offset_x;
+        let dst_y = y - offset_y + self.get_line_height();
 
-        let dst_rect = sdl2::rect::Rect::new(dst_x, dst_y, 
-                                             self.max_glyph_width, self.max_glyph_height);
+        let dst_rect = sdl2::rect::Rect::new(dst_x, dst_y, glyph.width, glyph.height);
         
         let _ = self.sdl_renderer.copy(&self.glyph_texture, Some(src_rect), Some(dst_rect));
+    }
+
+    fn render_char(&self, character: char, pos: Vec2, initial_pos: Vec2, kerning: i32)
+        -> Vec2 {
+       
+        match character {
+            '\n' => {
+                Vec2::new(initial_pos.x, pos.y + self.get_line_height())
+            },
+            _ => {
+                let glyph = self.get_glyph(character);
+
+                self.blit_glyph(&glyph, pos.x + kerning, pos.y);
+                let advance = glyph.advance as i32;
+                Vec2::new(pos.x + advance + kerning, pos.y)
+            }
+        }
+    }
+
+    fn get_kerning(&self, left_char: char, right_char: char) -> i32 {
+        
+        let prev_char_idx = self.font.get_char_index(left_char as u64);
+        let cur_char_idx = self.font.get_char_index(right_char as u64);
+        
+        match self.font.get_kerning(prev_char_idx, cur_char_idx, ft::face::KerningDefault) {
+            Ok(kerning) => {
+                (kerning.x >> FT_SCALE_SHIFT) as i32
+            },
+            _ => 0i32
+        }
     }
 
     pub fn draw<T: Str>(&self, text: &T, x: i32, y: i32) -> (i32, i32) {
@@ -186,42 +233,41 @@ impl<'a, T> TextRenderer<'a, T> {
 
     pub fn draw_str(&self, text: &str, x: i32, y: i32) -> (i32, i32) {
 
-        let mut char_offset_x = x;
-        let mut char_offset_y = y;
-
-        for c in text.chars() {
-
-            match c { 
-                '\n' => { 
-                    char_offset_y += self.get_line_height();
-                    char_offset_x = x;
-                    continue; },
-                _ => ()
-            };
-
-            let code = c as uint;
-            let mut code_index = code - self.begin_index;
-
-            if code_index >= self.glyphs.len() {
-                code_index = 0;
-            }
-
-            let glyph = self.glyphs.get(code_index);
-            let advance = glyph.advance as i32;
-
-            self.blit_glyph(glyph, char_offset_x, char_offset_y);
-         
-            char_offset_x += advance;
+        if text.len() == 0 {
+            return (x, y);
         }
 
-        (char_offset_x, char_offset_y) 
-    }
+        let mut pen_pos = Vec2::new(x, y);
+        let initial_pos = pen_pos;
 
+        let mut prev_range = text.char_range_at(0);
+        pen_pos = self.render_char(prev_range.ch, pen_pos, initial_pos, 0);
+
+        let mut i = prev_range.next;
+        while i < text.len() {
+
+
+            let cur_range = text.char_range_at(i);
+            let cur_char = cur_range.ch;
+            let prev_char = prev_range.ch;
+
+            let kerning = self.get_kerning(prev_char, cur_char);
+
+            pen_pos = self.render_char(cur_char, pen_pos, initial_pos, kerning);
+            i = cur_range.next;
+            prev_range = cur_range;
+                                                              
+        }
+
+        (pen_pos.x, pen_pos.y)
+    }
 
     pub fn set_color(&mut self, color: sdl2::pixels::Color) {
         
         match color {
-            sdl2::pixels::RGB(r, g, b) => { let _ = self.glyph_texture.set_color_mod(r, g, b); },
+            sdl2::pixels::RGB(r, g, b) => { 
+                let _ = self.glyph_texture.set_color_mod(r, g, b);
+            },
             sdl2::pixels::RGBA(r, g, b, a) => {
                 let _ = self.glyph_texture.set_color_mod(r, g, b);
                 let _ = self.glyph_texture.set_alpha_mod(a);
@@ -238,7 +284,6 @@ impl<'a, T> TextRenderer<'a, T> {
     }
 
     pub fn get_line_height(&self) -> i32 {
-        self.font.ascent() as i32
+        self.line_height
     }
-
 }
