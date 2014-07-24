@@ -12,7 +12,7 @@ fn main() {
     let font_path = match args.len() {
         0..1 => {
             let mut path = os::self_exe_path().unwrap();
-            path.push("assets/bitstream.ttf");
+            path.push("assets/arial.ttf");
             path
         }
         _ => Path::new(args[1].as_slice())  
