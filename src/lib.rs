@@ -114,7 +114,10 @@ impl<'a, T> TextRenderer<'a, T> {
 
         let freetype = ft::Library::init().unwrap();
 
-        let font = freetype.new_face(font_path.as_str().unwrap(), 0).unwrap();
+        let font = match freetype.new_face(font_path.as_str().unwrap(), 0) {
+            Ok(font) => font,
+            Err(e) => return Err(format!("{}", e))
+        };
 
         font.set_pixel_sizes(font_size as u32, 0).unwrap();
 
