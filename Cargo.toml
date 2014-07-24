@@ -10,9 +10,9 @@ authors = ["github.com/seemk"]
 name = "SDL2_text"
 path = "src/lib.rs"
 
-[dependencies.rust-sdl2]
+[dependencies.sdl2]
 
-git = "https://github.com/AngryLawyer/rust-sdl2"
+git = "https://github.com/PistonDevelopers/rust-sdl2"
 
 [dependencies.freetype-rs]
 
