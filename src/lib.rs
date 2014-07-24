@@ -39,7 +39,7 @@ impl Vec2 {
 pub struct TextRenderer<'a, T> {
     font: ft::Face,
     sdl_renderer: &'a sdl2::render::Renderer<T>,
-    pub glyph_texture: sdl2::render::Texture,
+    glyph_texture: sdl2::render::Texture,
     glyphs: Vec<Glyph>,
     begin_index: uint,
     line_height: i32
@@ -95,6 +95,17 @@ fn make_glyph(slot: &ft::GlyphSlot) -> Glyph {
 
 impl<'a, T> TextRenderer<'a, T> {
 
+    /// Creates a new text renderer from the given TTF font path.
+    ///
+    /// # Arguments
+    ///
+    /// * font_path - Path of the TTF font.
+    /// * font_size - Requested font size.
+    /// * sdl_renderer - A reference to a SDL renderer which is used to draw the text.
+    /// 
+    /// # Returns
+    /// 
+    /// Returns a SdlResult (Ok(renderer) or Err(error)).
     pub fn from_path(font_path: &Path,
                      font_size: int,
                      sdl_renderer: &'a sdl2::render::Renderer<T>)
@@ -117,8 +128,7 @@ impl<'a, T> TextRenderer<'a, T> {
                 sdl2::surface::SWSurface, texture_width, texture_height, 32,
                 0xFF000000u32, 0x00FF0000u32, 0x0000FF00u32, 0x000000FFu32));
 
-        let mut packer = BinPack::new(texture_width as i32,
-                                                      texture_height as i32);
+        let mut packer = BinPack::new(texture_width as i32, texture_height as i32);
 
         let mut glyphs: Vec<Glyph> = Vec::new();
 
@@ -227,6 +237,14 @@ impl<'a, T> TextRenderer<'a, T> {
         }
     }
 
+    /// # Arguments
+    ///
+    /// * `text` - the text to be drawn. Newlines start from x, y + line_height.
+    /// * `x` & `y` - x, y coordinates of the text's top left corner.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the x, y coordinates of the pen after rendering the text.
     pub fn draw<T: Str>(&self, text: &T, x: i32, y: i32) -> (i32, i32) {
        self.draw_str(text.as_slice(), x, y) 
     }
@@ -267,6 +285,7 @@ impl<'a, T> TextRenderer<'a, T> {
         match color {
             sdl2::pixels::RGB(r, g, b) => { 
                 let _ = self.glyph_texture.set_color_mod(r, g, b);
+                let _ = self.glyph_texture.set_alpha_mod(255);
             },
             sdl2::pixels::RGBA(r, g, b, a) => {
                 let _ = self.glyph_texture.set_color_mod(r, g, b);
@@ -275,15 +294,28 @@ impl<'a, T> TextRenderer<'a, T> {
         };
     }
 
-    pub fn get_color(&self) -> SdlResult<sdl2::pixels::Color> {
+    pub fn get_color(&self) -> sdl2::pixels::Color {
 
-       let (r, g, b) = try!(self.glyph_texture.get_color_mod());
-       let alpha = try!(self.glyph_texture.get_alpha_mod());
+       let (r, g, b) = match self.glyph_texture.get_color_mod() {
+            Ok(color) => color,
+            Err(_) => (0, 0, 0)
+       };
 
-       Ok(sdl2::pixels::RGBA(r, g, b, alpha))
+       let alpha = match self.glyph_texture.get_alpha_mod() {
+           Ok(alpha) => alpha,
+           Err(_) => 0
+       };
+
+       sdl2::pixels::RGBA(r, g, b, alpha)
     }
 
+    /// Returns the line height in pixels.
     pub fn get_line_height(&self) -> i32 {
         self.line_height
+    }
+
+    /// Returns a reference to the texture containing the character bitmaps.
+    pub fn get_atlas_texture(&self) -> &sdl2::render::Texture {
+        &self.glyph_texture
     }
 }

@@ -4,6 +4,7 @@ extern crate sdl2_text;
 
 use sdl2::keycode::*;
 use std::os;
+use sdl2::pixels::{RGBA, RGB};
 
 fn main() {
 
@@ -46,7 +47,6 @@ fn main() {
         Err(err) => fail!("Failed creating text renderer {}", err)
     };
 
-    text_renderer.set_color(sdl2::pixels::RGB(100, 149, 237));
 
     let mut text = String::new();
 
@@ -75,16 +75,20 @@ fn main() {
             };
         }
 
-        let _ = renderer.set_draw_color(sdl2::pixels::RGB(0, 0, 0));
+        let _ = renderer.set_draw_color(RGB(0, 0, 0));
         let _ = renderer.clear();
 
+        text_renderer.set_color(RGB(100, 149, 237));
         let (cur_x, cur_y) = text_renderer.draw(&text, 0, 0);
      
         let line_height = text_renderer.get_line_height();
-        let _ = renderer.set_draw_color(sdl2::pixels::RGB(255, 255, 255));
+        let _ = renderer.set_draw_color(RGB(255, 255, 255));
         let _ = renderer.fill_rect(&sdl2::rect::Rect::new(cur_x + 1, cur_y, 1, line_height));
 
+        text_renderer.set_color(RGB(255, 255, 255));
         text_renderer.draw(&format!("frame={}", frame), 0, 450);
+
+        text_renderer.set_color(RGBA(255, 192, 64, 200));
         text_renderer.draw_str("Something here.", 200, 300);
         renderer.present();
 

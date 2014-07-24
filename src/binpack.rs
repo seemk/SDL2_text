@@ -2,6 +2,14 @@ extern crate std;
 
 use std::cmp::max;
 
+// Rectangle bin packing based on SkylineBinPack by Jukka Jylänki.
+// Original: http://clb.demon.fi/files/RectangleBinPack/
+pub struct BinPack {
+    bin_width: i32,
+    bin_height: i32,
+    skyline: Vec<SkylineNode>
+}
+
 pub struct Rect {
     pub x: i32,
     pub y: i32,
@@ -31,11 +39,6 @@ impl SkylineNode {
     }
 }
 
-pub struct BinPack {
-    bin_width: i32,
-    bin_height: i32,
-    skyline: Vec<SkylineNode>
-}
 
 impl BinPack {
 
