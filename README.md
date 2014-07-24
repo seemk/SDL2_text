@@ -20,3 +20,7 @@ make examples
 Notes
 -----
 Differs from SDL2_ttf by rendering the font to a texture atlas, handles newlines.
+
+An example using Arial font:
+
+![](http://i.imgur.com/UMdQmal.png)
