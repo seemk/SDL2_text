@@ -42,7 +42,10 @@ pub struct TextRenderer<'a, T> {
     glyph_texture: sdl2::render::Texture,
     glyphs: Vec<Glyph>,
     begin_index: uint,
-    line_height: i32
+    line_height: i32,
+    // ft::Library is reference counted, need to hold to it.
+    #[allow(dead_code)]
+    freetype: ft::Library,
 }
 
 fn render_char(slot: &ft::GlyphSlot) -> sdl2::surface::Surface {
@@ -172,10 +175,12 @@ impl<'a, T> TextRenderer<'a, T> {
                                                texture_height as i32);
         let _ = sdl_renderer.copy(&glyph_texture_atlas, None, Some(atlas_rect));
 
-        Ok(TextRenderer { font: font, sdl_renderer: sdl_renderer,
-                                  glyph_texture: glyph_texture_atlas,
-                                  begin_index: char_begin as uint,
-                                  glyphs: glyphs, line_height: font_size as i32 })
+        Ok(TextRenderer { font: font,
+                          sdl_renderer: sdl_renderer,
+                          glyph_texture: glyph_texture_atlas,
+                          begin_index: char_begin as uint,
+                          glyphs: glyphs, line_height: font_size as i32,
+                          freetype: freetype })
     }
 
     fn get_glyph(&self, character: char) -> Glyph {
@@ -228,10 +233,10 @@ impl<'a, T> TextRenderer<'a, T> {
     }
 
     fn get_kerning(&self, left_char: char, right_char: char) -> i32 {
-        
+       
         let prev_char_idx = self.font.get_char_index(left_char as u64);
         let cur_char_idx = self.font.get_char_index(right_char as u64);
-        
+       
         match self.font.get_kerning(prev_char_idx, cur_char_idx, ft::face::KerningDefault) {
             Ok(kerning) => {
                 (kerning.x >> FT_SCALE_SHIFT) as i32
