@@ -79,17 +79,17 @@ fn main() {
         let _ = renderer.clear();
 
         text_renderer.set_color(RGB(100, 149, 237));
-        let (cur_x, cur_y) = text_renderer.draw(&text, 0, 0);
+        let (cur_x, cur_y) = text_renderer.draw(&text, 0, 0, &renderer);
      
         let line_height = text_renderer.get_line_height();
         let _ = renderer.set_draw_color(RGB(255, 255, 255));
         let _ = renderer.fill_rect(&sdl2::rect::Rect::new(cur_x + 1, cur_y, 1, line_height));
 
         text_renderer.set_color(RGB(255, 255, 255));
-        text_renderer.draw(&format!("frame={}", frame), 0, 450);
+        text_renderer.draw(&format!("frame={}", frame), 0, 450, &renderer);
 
         text_renderer.set_color(RGBA(255, 192, 64, 200));
-        text_renderer.draw_str("Something here.", 200, 300);
+        text_renderer.draw_str("Something here.", 200, 300, &renderer);
         renderer.present();
 
         frame += 1;

@@ -42,7 +42,7 @@ fn main() {
     let text = String::from_str("Hello, world!");
 
 
-    text_renderer.draw(&text, 200, 200);
+    text_renderer.draw(&text, 200, 200, &renderer);
     renderer.present();
     
     'main : loop {

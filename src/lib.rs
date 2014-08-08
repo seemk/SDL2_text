@@ -36,9 +36,8 @@ impl Vec2 {
     }
 }
 
-pub struct TextRenderer<'a, T> {
+pub struct TextRenderer {
     font: ft::Face,
-    sdl_renderer: &'a sdl2::render::Renderer<T>,
     glyph_texture: sdl2::render::Texture,
     glyphs: Vec<Glyph>,
     begin_index: uint,
@@ -96,7 +95,7 @@ fn make_glyph(slot: &ft::GlyphSlot) -> Glyph {
 
 }
 
-impl<'a, T> TextRenderer<'a, T> {
+impl TextRenderer {
 
     /// Creates a new text renderer from the given TTF font path.
     ///
@@ -104,15 +103,14 @@ impl<'a, T> TextRenderer<'a, T> {
     ///
     /// * font_path - Path of the TTF font.
     /// * font_size - Requested font size.
-    /// * sdl_renderer - A reference to a SDL renderer which is used to draw the text.
     /// 
     /// # Returns
     /// 
     /// Returns a SdlResult (Ok(renderer) or Err(error)).
-    pub fn from_path(font_path: &Path,
+    pub fn from_path<T>(font_path: &Path,
                      font_size: int,
-                     sdl_renderer: &'a sdl2::render::Renderer<T>)
-                     -> SdlResult<TextRenderer<'a, T>> {
+                     renderer: &sdl2::render::Renderer<T>)
+                     -> SdlResult<TextRenderer> {
 
 
         let freetype = ft::Library::init().unwrap();
@@ -140,7 +138,9 @@ impl<'a, T> TextRenderer<'a, T> {
 
         for c in range(char_begin, char_end) {
 
-            font.load_char(c as u64, ft::face::Render).unwrap();
+            font.load_char(c as u64, ft::face::LoadTargetNormal
+                           | ft::face::Render
+                           | ft::face::ForceAutohint).unwrap();
 
             let slot = font.glyph();
 
@@ -166,17 +166,16 @@ impl<'a, T> TextRenderer<'a, T> {
             glyphs.push(glyph);
         }
 
-        let glyph_texture_atlas = try!(sdl_renderer.create_texture_from_surface(
+        let glyph_texture_atlas = try!(renderer.create_texture_from_surface(
             &glyph_atlas_surface));
 
         let _ = glyph_texture_atlas.set_blend_mode(sdl2::render::BlendBlend);
 
         let atlas_rect = sdl2::rect::Rect::new(0, 0, texture_width as i32,
                                                texture_height as i32);
-        let _ = sdl_renderer.copy(&glyph_texture_atlas, None, Some(atlas_rect));
+        let _ = renderer.copy(&glyph_texture_atlas, None, Some(atlas_rect));
 
         Ok(TextRenderer { font: font,
-                          sdl_renderer: sdl_renderer,
                           glyph_texture: glyph_texture_atlas,
                           begin_index: char_begin as uint,
                           glyphs: glyphs, line_height: font_size as i32,
@@ -197,7 +196,8 @@ impl<'a, T> TextRenderer<'a, T> {
     }
 
 
-    fn blit_glyph(&self, glyph: &Glyph, x: i32, y: i32) {
+    fn blit_glyph<T>(&self, glyph: &Glyph, x: i32, y: i32,
+                     renderer: &sdl2::render::Renderer<T>) {
 
         let u = glyph.u as i32;
         let v = glyph.v as i32;
@@ -212,10 +212,11 @@ impl<'a, T> TextRenderer<'a, T> {
 
         let dst_rect = sdl2::rect::Rect::new(dst_x, dst_y, glyph.width, glyph.height);
         
-        let _ = self.sdl_renderer.copy(&self.glyph_texture, Some(src_rect), Some(dst_rect));
+        let _ = renderer.copy(&self.glyph_texture, Some(src_rect), Some(dst_rect));
     }
 
-    fn render_char(&self, character: char, pos: Vec2, initial_pos: Vec2, kerning: i32)
+    fn render_char<T>(&self, character: char, pos: Vec2, initial_pos: Vec2, kerning: i32,
+                   renderer: &sdl2::render::Renderer<T>)
         -> Vec2 {
        
         match character {
@@ -225,7 +226,7 @@ impl<'a, T> TextRenderer<'a, T> {
             _ => {
                 let glyph = self.get_glyph(character);
 
-                self.blit_glyph(&glyph, pos.x + kerning, pos.y);
+                self.blit_glyph(&glyph, pos.x + kerning, pos.y, renderer);
                 let advance = glyph.advance as i32;
                 Vec2::new(pos.x + advance + kerning, pos.y)
             }
@@ -249,15 +250,18 @@ impl<'a, T> TextRenderer<'a, T> {
     ///
     /// * `text` - the text to be drawn. Newlines start from x, y + line_height.
     /// * `x` & `y` - x, y coordinates of the text's top left corner.
+    /// * `renderer` - SDL renderer to do the drawing
     ///
     /// # Returns
     ///
     /// A tuple containing the x, y coordinates of the pen after rendering the text.
-    pub fn draw<T: Str>(&self, text: &T, x: i32, y: i32) -> (i32, i32) {
-       self.draw_str(text.as_slice(), x, y) 
+    pub fn draw<T: Str, R>(&self, text: &T, x: i32, y: i32,
+                           renderer: &sdl2::render::Renderer<R>) -> (i32, i32) {
+       self.draw_str(text.as_slice(), x, y, renderer) 
     }
 
-    pub fn draw_str(&self, text: &str, x: i32, y: i32) -> (i32, i32) {
+    pub fn draw_str<T>(&self, text: &str, x: i32, y: i32,
+                       renderer: &sdl2::render::Renderer<T>) -> (i32, i32) {
 
         if text.len() == 0 {
             return (x, y);
@@ -267,7 +271,7 @@ impl<'a, T> TextRenderer<'a, T> {
         let initial_pos = pen_pos;
 
         let mut prev_range = text.char_range_at(0);
-        pen_pos = self.render_char(prev_range.ch, pen_pos, initial_pos, 0);
+        pen_pos = self.render_char(prev_range.ch, pen_pos, initial_pos, 0, renderer);
 
         let mut i = prev_range.next;
         while i < text.len() {
@@ -279,7 +283,7 @@ impl<'a, T> TextRenderer<'a, T> {
 
             let kerning = self.get_kerning(prev_char, cur_char);
 
-            pen_pos = self.render_char(cur_char, pen_pos, initial_pos, kerning);
+            pen_pos = self.render_char(cur_char, pen_pos, initial_pos, kerning, renderer);
             i = cur_range.next;
             prev_range = cur_range;
                                                               
