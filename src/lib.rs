@@ -6,7 +6,7 @@ extern crate freetype;
 
 use sdl2::SdlResult;
 use sdl2::surface::Surface;
-use ft = freetype;
+use freetype as ft;
 use binpack::BinPack;
 
 mod binpack;
