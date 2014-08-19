@@ -5,7 +5,7 @@ version = "0.0.1"
 
 authors = ["github.com/seemk"]
 
-[[lib]]
+[lib]
 
 name = "sdl2_text"
 path = "src/lib.rs"
